@@ -1,4 +1,4 @@
-import { Entity } from './Entity.js';
+import { Entity } from './entity.js';
 import { TOKEN_SETTINGS, GAME_SETTINGS } from '../config.js';
 
 export class Token extends Entity {
