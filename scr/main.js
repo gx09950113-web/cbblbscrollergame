@@ -100,7 +100,6 @@ function update(deltaTime) {
     timeLeft -= deltaTime / 1000;
     if (timeLeft <= 0) endGame();
 
-    // 1. 移動與背景連動：只有向右移動背景才捲動
     let isMoving = false;
     if (input.isRight && player.x < canvas.width - player.width) {
         player.x += player.speed * 0.5; 
@@ -112,25 +111,32 @@ function update(deltaTime) {
         isMoving = true;
     }
 
-    // 2. 跳躍 (空白鍵)
-    if (input.isJump) {
-        player.jump();
-    }
+    if (input.isJump) player.jump();
 
-    // 3. 攻擊 (滑鼠左鍵)
+    // --- 攻擊與擊殺掉落邏輯 ---
     if (gameState === 'PLAYING' && input.isAttack) {
-        const hit = player.performAttack(enemies);
-        if (hit && assets.audio.hit) {
-            assets.audio.hit.currentTime = 0;
-            assets.audio.hit.play().catch(()=>{});
+        const killedEnemy = player.performAttack(enemies);
+        
+        // 閃光特效已在 player.draw 處理
+        if (killedEnemy) {
+            // 擊殺音效
+            if (assets.audio.hit) {
+                assets.audio.hit.currentTime = 0;
+                assets.audio.hit.play().catch(()=>{});
+            }
+            // 重要：擊殺怪物後在怪物死掉的位置生成一個代幣
+            const dropToken = new Token();
+            dropToken.x = killedEnemy.x; // 繼承怪物座標
+            dropToken.y = killedEnemy.y;
+            tokens.push(dropToken);
         }
     }
 
     player.update(deltaTime, isMoving);
 
-    // 怪物與代幣位移速度同步
     const relativeSpeed = (isMoving && input.isRight) ? player.speed : 0;
 
+    // 怪物更新與碰撞
     enemies.forEach((enemy, i) => {
         enemy.update(deltaTime, relativeSpeed);
         if (player.checkCollision(enemy)) {
@@ -141,6 +147,7 @@ function update(deltaTime) {
         if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
+    // 代幣更新與吃掉邏輯
     tokens.forEach((token, i) => {
         token.update(deltaTime, relativeSpeed);
         if (player.checkCollision(token)) {
@@ -151,7 +158,6 @@ function update(deltaTime) {
         if (token.markedForDeletion) tokens.splice(i, 1);
     });
 
-    // 生成邏輯
     spawnTimer += deltaTime;
     if (spawnTimer > GAME_SETTINGS.SPAWN_INTERVAL) {
         if (Math.random() < GAME_SETTINGS.SPAWN_CHANCE.ENEMY) enemies.push(new Enemy());
@@ -180,15 +186,11 @@ function endGame() {
     storage.saveDailyResult(totalTokens); 
 }
 
-// 修正後的點擊座標換算
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
     if (y >= 180 && y <= 380) {
         if (x >= 120 && x <= 280) selectCharacter('huaijing');
         else if (x >= 320 && x <= 480) selectCharacter('quiqui');
