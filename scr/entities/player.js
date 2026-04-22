@@ -1,4 +1,4 @@
-import { Entity } from './Entity.js';
+import { Entity } from './entity.js';
 
 /**
  * 玩家類別 - 處理動畫切換、角色屬性與特殊能力
