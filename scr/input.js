@@ -35,15 +35,15 @@ export class InputHandler {
         return this.isPressed('KeyD') || this.isPressed('ArrowRight');
     }
 
-    // 空白鍵專用於跳躍
+    // 空白鍵跳躍
     get isJump() {
         return this.isPressed('Space') || this.isPressed('KeyW') || this.isPressed('ArrowUp');
     }
 
-    // 滑鼠左鍵專用於攻擊
+    // 滑鼠左鍵攻擊
     get isAttack() {
         const attack = this.isMouseLeftPressed;
-        if (attack) this.isMouseLeftPressed = false; // 單次點擊觸發，防止按住連發
+        if (attack) this.isMouseLeftPressed = false; // 單次觸發
         return attack;
     }
 }
