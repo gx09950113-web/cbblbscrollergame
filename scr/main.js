@@ -100,11 +100,11 @@ function update(deltaTime) {
     timeLeft -= deltaTime / 1000;
     if (timeLeft <= 0) endGame();
 
-    // --- 背景與移動連動 ---
+    // 1. 移動與背景連動：只有向右移動背景才捲動
     let isMoving = false;
     if (input.isRight && player.x < canvas.width - player.width) {
         player.x += player.speed * 0.5; 
-        background.update(player.speed); // 只有向右移動時背景才捲動
+        background.update(player.speed); 
         isMoving = true;
     }
     if (input.isLeft && player.x > 0) {
@@ -112,8 +112,13 @@ function update(deltaTime) {
         isMoving = true;
     }
 
-    // --- 攻擊判定 ---
-    if (input.isJump) { // Space 鍵
+    // 2. 跳躍 (空白鍵)
+    if (input.isJump) {
+        player.jump();
+    }
+
+    // 3. 攻擊 (滑鼠左鍵)
+    if (gameState === 'PLAYING' && input.isAttack) {
         const hit = player.performAttack(enemies);
         if (hit && assets.audio.hit) {
             assets.audio.hit.currentTime = 0;
@@ -123,16 +128,11 @@ function update(deltaTime) {
 
     player.update(deltaTime, isMoving);
 
-    // 生成與碰撞邏輯
-    spawnTimer += deltaTime;
-    if (spawnTimer > GAME_SETTINGS.SPAWN_INTERVAL) {
-        if (Math.random() < GAME_SETTINGS.SPAWN_CHANCE.ENEMY) enemies.push(new Enemy());
-        else if (Math.random() < GAME_SETTINGS.SPAWN_CHANCE.TOKEN) tokens.push(new Token());
-        spawnTimer = 0;
-    }
+    // 怪物與代幣位移速度同步
+    const relativeSpeed = (isMoving && input.isRight) ? player.speed : 0;
 
     enemies.forEach((enemy, i) => {
-        enemy.update(deltaTime, isMoving && input.isRight ? player.speed : 0);
+        enemy.update(deltaTime, relativeSpeed);
         if (player.checkCollision(enemy)) {
             player.hp -= enemy.damage;
             enemies.splice(i, 1);
@@ -142,7 +142,7 @@ function update(deltaTime) {
     });
 
     tokens.forEach((token, i) => {
-        token.update(deltaTime, isMoving && input.isRight ? player.speed : 0);
+        token.update(deltaTime, relativeSpeed);
         if (player.checkCollision(token)) {
             if (assets.audio.coin) { assets.audio.coin.currentTime = 0; assets.audio.coin.play().catch(()=>{}); }
             totalTokens += token.value;
@@ -150,6 +150,14 @@ function update(deltaTime) {
         }
         if (token.markedForDeletion) tokens.splice(i, 1);
     });
+
+    // 生成邏輯
+    spawnTimer += deltaTime;
+    if (spawnTimer > GAME_SETTINGS.SPAWN_INTERVAL) {
+        if (Math.random() < GAME_SETTINGS.SPAWN_CHANCE.ENEMY) enemies.push(new Enemy());
+        else if (Math.random() < GAME_SETTINGS.SPAWN_CHANCE.TOKEN) tokens.push(new Token());
+        spawnTimer = 0;
+    }
 }
 
 function drawGame() {
@@ -172,11 +180,15 @@ function endGame() {
     storage.saveDailyResult(totalTokens); 
 }
 
+// 修正後的點擊座標換算
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
     if (y >= 180 && y <= 380) {
         if (x >= 120 && x <= 280) selectCharacter('huaijing');
         else if (x >= 320 && x <= 480) selectCharacter('quiqui');
