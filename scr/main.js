@@ -28,12 +28,14 @@ let background = null;
 let input = null;
 let enemies = [];
 let tokens = [];
+let loadedCount = 0;
+let totalToLoad = 0;
 const assets = { images: {}, audio: {} };
 
 // --- 1. 遊戲初始化 ---
 function init() {
     storage.checkAndResetDaily(); 
-    input = new InputHandler(); // 初始化鍵盤監聽
+    input = new InputHandler(); 
     
     if (!storage.canPlayToday()) {
         gameState = 'ALREADY_PLAYED';
@@ -43,6 +45,16 @@ function init() {
 }
 
 // --- 2. 資源預載器 ---
+function checkLoaded() {
+    loadedCount++;
+    if (loadedCount >= totalToLoad) {
+        // 重要：只有在 LOADING 狀態時才切換到 MENU，防止遊戲中途被音效觸發重設
+        if (gameState === 'LOADING') {
+            gameState = 'MENU';
+        }
+    }
+}
+
 function preloadResources() {
     const charNames = ['huaijing', 'quiqui', 'lingjun'];
     const states = ['stand', 'left', 'right'];
@@ -53,15 +65,7 @@ function preloadResources() {
         { key: 'hit', src: 'assets/audio/sfx_hit.mp3', loop: false }
     ];
 
-    let loadedCount = 0;
-    const totalToLoad = (charNames.length * states.length) + 1 + audioFiles.length;
-
-    function checkLoaded() {
-        loadedCount++;
-        if (loadedCount >= totalToLoad) {
-            if (gameState !== 'ALREADY_PLAYED') gameState = 'MENU';
-        }
-    }
+    totalToLoad = (charNames.length * states.length) + 1 + audioFiles.length;
 
     // 載入背景圖
     const bgImg = new Image();
@@ -131,7 +135,7 @@ function update(deltaTime) {
         endGame();
     }
 
-    // --- 角色移動控制 ---
+    // 移動控制
     if (input.isRight && player.x < canvas.width - player.width) {
         player.x += player.speed * 0.5; 
     }
@@ -142,7 +146,7 @@ function update(deltaTime) {
     background.update(player.speed);
     player.update(deltaTime, true);
 
-    // 生成怪物與代幣
+    // 生成
     spawnTimer += deltaTime;
     if (spawnTimer > GAME_SETTINGS.SPAWN_INTERVAL) {
         const roll = Math.random();
@@ -154,7 +158,7 @@ function update(deltaTime) {
         spawnTimer = 0;
     }
 
-    // 碰撞偵測：怪物
+    // 碰撞怪物
     enemies.forEach((enemy, i) => {
         enemy.update(deltaTime, player.speed);
         if (player.checkCollision(enemy)) {
@@ -169,7 +173,7 @@ function update(deltaTime) {
         if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
-    // 碰撞偵測：代幣
+    // 碰撞代幣
     tokens.forEach((token, i) => {
         token.update(deltaTime, player.speed);
         if (player.checkCollision(token)) {
@@ -187,13 +191,10 @@ function update(deltaTime) {
 // --- 5. 畫面繪製 ---
 function drawGame() {
     if (!player) return;
-
     background.draw(ctx);
     player.draw(ctx);
     enemies.forEach(e => e.draw(ctx));
     tokens.forEach(t => t.draw(ctx));
-
-    // 使用 UI 繪製 HUD
     UI.drawHUD(ctx, canvas.width, canvas.height, {
         timeLeft: Math.floor(timeLeft),
         tokens: totalTokens,
@@ -203,12 +204,14 @@ function drawGame() {
 
 // --- 6. 核心功能 ---
 function selectCharacter(type) {
+    // 立即變更狀態，防止點擊後因為資源加載回調又跳回 MENU
+    gameState = 'PLAYING';
     player = new Player(type, assets.images, CHARACTERS[type]);
+    
     if (assets.audio.bgm) {
         assets.audio.bgm.currentTime = 0;
-        assets.audio.bgm.play().catch(e => console.log("音效播放受限，需玩家互動"));
+        assets.audio.bgm.play().catch(e => console.log("音效受限"));
     }
-    gameState = 'PLAYING';
 }
 
 function endGame() {
@@ -217,15 +220,20 @@ function endGame() {
     storage.saveDailyResult(totalTokens); 
 }
 
-// --- 7. 事件監聽 ---
+// --- 7. 修正位移的事件監聽 ---
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    
+    // 計算縮放比例：將視窗座標轉回 Canvas 內部的 800x450 座標
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
 
-    // 精確匹配 UI.js 繪製的角色選擇區域 (y: 180 ~ 380)
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    // 判定區域 (對應 UI.js 中的 x: 120, 320, 520; y: 180~380)
     if (y >= 180 && y <= 380) {
         if (x >= 120 && x <= 280) selectCharacter('huaijing');
         else if (x >= 320 && x <= 480) selectCharacter('quiqui');
