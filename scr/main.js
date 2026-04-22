@@ -4,7 +4,8 @@ import { Background } from './background.js';
 import { storage } from './storage.js';
 import { Enemy } from './entities/enemy.js';
 import { Token } from './entities/token.js';
-import { UI } from './ui.js'; // 引入 UI 繪製中心
+import { UI } from './ui.js';
+import { InputHandler } from './input.js'; // 引入輸入處理
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -21,6 +22,7 @@ let spawnTimer = 0;
 // --- 實體與資源 ---
 let player = null;
 let background = null;
+let input = null; // 宣告輸入處理變數
 let enemies = [];
 let tokens = [];
 const assets = { images: {}, audio: {} };
@@ -28,6 +30,7 @@ const assets = { images: {}, audio: {} };
 // --- 1. 遊戲初始化 ---
 function init() {
     storage.checkAndResetDaily(); 
+    input = new InputHandler(); // 初始化鍵盤監聽
     
     if (!storage.canPlayToday()) {
         gameState = 'ALREADY_PLAYED';
@@ -126,12 +129,21 @@ function gameLoop(timeStamp) {
 
 // --- 4. 邏輯更新 ---
 function update(deltaTime) {
-    if (isNaN(deltaTime)) return;
+    if (isNaN(deltaTime) || !player) return;
 
     timeLeft -= deltaTime / 1000;
     if (timeLeft <= 0) {
         timeLeft = 0;
         endGame();
+    }
+
+    // --- 角色移動邏輯修正 ---
+    // 雖然是自動捲軸，但允許玩家在畫面內微調位置
+    if (input.isRight && player.x < canvas.width - player.width) {
+        player.x += player.speed * 0.5; // 向右移動
+    }
+    if (input.isLeft && player.x > 0) {
+        player.x -= player.speed * 0.5; // 向左移動
     }
 
     background.update(player.speed);
@@ -157,7 +169,7 @@ function update(deltaTime) {
                 assets.audio.hit.currentTime = 0;
                 assets.audio.hit.play();
             }
-            player.hp -= enemy.damage; // 扣血
+            player.hp -= enemy.damage;
             enemies.splice(i, 1);
             if (player.hp <= 0) endGame();
         }
@@ -181,12 +193,14 @@ function update(deltaTime) {
 
 // --- 5. 畫面繪製 ---
 function drawGame() {
+    if (!player) return;
+
     background.draw(ctx);
     player.draw(ctx);
     enemies.forEach(e => e.draw(ctx));
     tokens.forEach(t => t.draw(ctx));
 
-    // 使用 UI.js 繪製抬頭顯示器 (血條、時間、分數)
+    // 使用 UI.js 繪製抬頭顯示器
     UI.drawHUD(ctx, canvas.width, canvas.height, {
         timeLeft: Math.floor(timeLeft),
         tokens: totalTokens,
@@ -197,7 +211,10 @@ function drawGame() {
 // --- 6. 互動功能 ---
 function selectCharacter(type) {
     player = new Player(type, assets.images, CHARACTERS[type]);
-    if (assets.audio.bgm) assets.audio.bgm.play().catch(e => console.log("音效自動播放受限"));
+    if (assets.audio.bgm) {
+        assets.audio.bgm.currentTime = 0;
+        assets.audio.bgm.play().catch(e => console.log("音效自動播放受限"));
+    }
     gameState = 'PLAYING';
 }
 
@@ -207,14 +224,14 @@ function endGame() {
     storage.saveDailyResult(totalTokens); 
 }
 
-// 事件監聽：選單點擊
+// 事件監聽：選單點擊角色
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // 對應 UI.js 繪製的三個框框位置
+    // 判定區域需對應 ui.js 畫出來的三個框
     if (y > 180 && y < 380) {
         if (x > 120 && x < 280) selectCharacter('huaijing');
         else if (x > 320 && x < 480) selectCharacter('quiqui');
