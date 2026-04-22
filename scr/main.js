@@ -1,9 +1,10 @@
 import { CHARACTERS, GAME_SETTINGS } from './config.js';
-import { Player } from './entities/player.js'; // 改小寫 p
+import { Player } from './entities/player.js'; 
 import { Background } from './background.js';
 import { storage } from './storage.js';
-import { Enemy } from './entities/enemy.js';   // 改小寫 e
-import { Token } from './entities/token.js';   // 改小寫 t
+import { Enemy } from './entities/enemy.js';
+import { Token } from './entities/token.js';
+import { UI } from './ui.js'; // 引入 UI 繪製中心
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -26,7 +27,6 @@ const assets = { images: {}, audio: {} };
 
 // --- 1. 遊戲初始化 ---
 function init() {
-    // 檢查每日狀態
     storage.checkAndResetDaily(); 
     
     if (!storage.canPlayToday()) {
@@ -41,7 +41,7 @@ function preloadResources() {
     const charNames = ['huaijing', 'quiqui', 'lingjun'];
     const states = ['stand', 'left', 'right'];
     
-    // 如果你暫時沒有音效檔，可以先將此陣列設為空 [] 以免卡住
+    // 確保這些檔案在 assets/audio/ 下且名稱全小寫
     const audioFiles = [
         { key: 'bgm', src: 'assets/audio/bgm_main.mp3', loop: true },
         { key: 'coin', src: 'assets/audio/sfx_coin.mp3', loop: false },
@@ -72,7 +72,6 @@ function preloadResources() {
         states.forEach(state => {
             const key = `${char}_${state}`;
             const img = new Image();
-            // 這裡的路徑必須與你的資料夾結構完全一致
             img.src = `assets/${char}/${key}.png`;
             img.onload = () => {
                 assets.images[key] = img;
@@ -94,7 +93,6 @@ function preloadResources() {
         audio.load();
     });
 
-    // 啟動循環
     requestAnimationFrame(gameLoop);
 }
 
@@ -107,20 +105,20 @@ function gameLoop(timeStamp) {
 
     switch (gameState) {
         case 'LOADING':
-            drawText("資源載入中...", 320, 220, "20px Arial", "white");
+            UI.drawText(ctx, "資源載入中...", canvas.width/2, canvas.height/2, "20px Arial", "white", "center");
             break;
         case 'MENU':
-            drawMenu();
+            UI.drawMenu(ctx, canvas.width, canvas.height);
             break;
         case 'PLAYING':
             update(deltaTime);
             drawGame();
             break;
         case 'GAMEOVER':
-            drawGameOver();
+            UI.drawGameOver(ctx, canvas.width, canvas.height, totalTokens);
             break;
         case 'ALREADY_PLAYED':
-            drawAlreadyPlayed();
+            UI.drawText(ctx, "今日已挑戰過，請明日再戰！", canvas.width/2, canvas.height/2, "24px Arial", "red", "center");
             break;
     }
     requestAnimationFrame(gameLoop);
@@ -151,24 +149,25 @@ function update(deltaTime) {
         spawnTimer = 0;
     }
 
-    // 處理怪物
+    // 處理怪物碰撞
     enemies.forEach((enemy, i) => {
         enemy.update(deltaTime, player.speed);
-        if (checkCollision(player, enemy)) {
+        if (player.checkCollision(enemy)) {
             if (assets.audio.hit) {
                 assets.audio.hit.currentTime = 0;
                 assets.audio.hit.play();
             }
-            totalTokens += 5;
+            player.hp -= enemy.damage; // 扣血
             enemies.splice(i, 1);
+            if (player.hp <= 0) endGame();
         }
         if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
-    // 處理代幣
+    // 處理代幣碰撞
     tokens.forEach((token, i) => {
         token.update(deltaTime, player.speed);
-        if (checkCollision(player, token)) {
+        if (player.checkCollision(token)) {
             if (assets.audio.coin) {
                 assets.audio.coin.currentTime = 0;
                 assets.audio.coin.play();
@@ -180,44 +179,25 @@ function update(deltaTime) {
     });
 }
 
-// --- 5. 介面繪製 (UI) ---
-function drawMenu() {
-    drawText("請選擇今日挑戰角色", 260, 100, "28px Arial", "white");
-    const roles = ['huaijing', 'quiqui', 'lingjun'];
-    roles.forEach((char, i) => {
-        const x = 150 + i * 180;
-        ctx.strokeStyle = "white";
-        ctx.strokeRect(x, 200, 150, 150);
-        drawText(CHARACTERS[char].name, x + 10, 280, "18px Arial", "white");
-    });
-}
-
+// --- 5. 畫面繪製 ---
 function drawGame() {
     background.draw(ctx);
     player.draw(ctx);
     enemies.forEach(e => e.draw(ctx));
     tokens.forEach(t => t.draw(ctx));
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-    ctx.fillRect(0, 0, canvas.width, 60);
-    drawText(`剩餘時間: ${Math.floor(timeLeft)}s`, 20, 40, "20px Monospace", "white");
-    drawText(`今日獲得代幣: ${totalTokens}`, 550, 40, "20px Monospace", "gold");
-}
-
-function drawGameOver() {
-    drawText("5 分鐘挑戰結束！", 280, 180, "30px Arial", "white");
-    drawText(`今日總結算: ${totalTokens} 代幣`, 290, 240, "24px Arial", "gold");
-    drawText("請明日再戰", 350, 300, "18px Arial", "gray");
-}
-
-function drawAlreadyPlayed() {
-    drawText("今日已挑戰過，請明日再戰！", 240, 225, "24px Arial", "red");
+    // 使用 UI.js 繪製抬頭顯示器 (血條、時間、分數)
+    UI.drawHUD(ctx, canvas.width, canvas.height, {
+        timeLeft: Math.floor(timeLeft),
+        tokens: totalTokens,
+        player: player
+    });
 }
 
 // --- 6. 互動功能 ---
 function selectCharacter(type) {
     player = new Player(type, assets.images, CHARACTERS[type]);
-    if (assets.audio.bgm) assets.audio.bgm.play().catch(e => console.log("音效播放被阻擋"));
+    if (assets.audio.bgm) assets.audio.bgm.play().catch(e => console.log("音效自動播放受限"));
     gameState = 'PLAYING';
 }
 
@@ -227,24 +207,19 @@ function endGame() {
     storage.saveDailyResult(totalTokens); 
 }
 
-function checkCollision(a, b) {
-    return a.x < b.x + b.width && a.x + a.width > b.x &&
-           a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-function drawText(text, x, y, font, color) {
-    ctx.fillStyle = color;
-    ctx.font = font;
-    ctx.fillText(text, x, y);
-}
-
+// 事件監聽：選單點擊
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
-    if (x > 150 && x < 300) selectCharacter('huaijing');
-    else if (x > 330 && x < 480) selectCharacter('quiqui');
-    else if (x > 510 && x < 660) selectCharacter('lingjun');
+    const y = e.clientY - rect.top;
+
+    // 對應 UI.js 繪製的三個框框位置
+    if (y > 180 && y < 380) {
+        if (x > 120 && x < 280) selectCharacter('huaijing');
+        else if (x > 320 && x < 480) selectCharacter('quiqui');
+        else if (x > 520 && x < 680) selectCharacter('lingjun');
+    }
 });
 
 init();
