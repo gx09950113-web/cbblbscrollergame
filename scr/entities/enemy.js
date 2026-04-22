@@ -1,4 +1,4 @@
-import { Entity } from './Entity.js';
+import { Entity } from './entity.js';
 import { ENEMY_SETTINGS, GAME_SETTINGS } from '../config.js';
 
 export class Enemy extends Entity {
