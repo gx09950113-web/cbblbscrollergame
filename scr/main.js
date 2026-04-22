@@ -1,9 +1,9 @@
 import { CHARACTERS, GAME_SETTINGS } from './config.js';
-import { Player } from './entities/Player.js';
+import { Player } from './entities/player.js'; // 改小寫 p
 import { Background } from './background.js';
 import { storage } from './storage.js';
-import { Enemy } from './entities/Enemy.js';
-import { Token } from './entities/Token.js';
+import { Enemy } from './entities/enemy.js';   // 改小寫 e
+import { Token } from './entities/token.js';   // 改小寫 t
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
