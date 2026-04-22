@@ -1,7 +1,9 @@
-import { CHARACTERS } from './config.js';
+import { CHARACTERS, GAME_SETTINGS } from './config.js';
 import { Player } from './entities/Player.js';
 import { Background } from './background.js';
 import { storage } from './storage.js';
+import { Enemy } from './entities/Enemy.js';
+import { Token } from './entities/Token.js';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -10,7 +12,7 @@ canvas.height = 450;
 
 // --- 遊戲狀態與數據 ---
 let gameState = 'LOADING'; 
-let timeLeft = 300;     // 5 分鐘
+let timeLeft = GAME_SETTINGS.GAME_DURATION;
 let totalTokens = 0;
 let lastTime = 0;
 let spawnTimer = 0;
@@ -25,7 +27,7 @@ const assets = { images: {}, audio: {} };
 // --- 1. 遊戲初始化 ---
 function init() {
     // 檢查每日狀態
-    storage.checkAndResetDaily(); // storage.js 內需處理日期比對與代幣歸零
+    storage.checkAndResetDaily(); 
     
     if (!storage.canPlayToday()) {
         gameState = 'ALREADY_PLAYED';
@@ -34,10 +36,12 @@ function init() {
     preloadResources();
 }
 
-// --- 2. 資源預載器 (圖片 + 音樂) ---
+// --- 2. 資源預載器 ---
 function preloadResources() {
     const charNames = ['huaijing', 'quiqui', 'lingjun'];
     const states = ['stand', 'left', 'right'];
+    
+    // 如果你暫時沒有音效檔，可以先將此陣列設為空 [] 以免卡住
     const audioFiles = [
         { key: 'bgm', src: 'assets/audio/bgm_main.mp3', loop: true },
         { key: 'coin', src: 'assets/audio/sfx_coin.mp3', loop: false },
@@ -49,9 +53,8 @@ function preloadResources() {
 
     function checkLoaded() {
         loadedCount++;
-        if (loadedCount === totalToLoad) {
+        if (loadedCount >= totalToLoad) {
             if (gameState !== 'ALREADY_PLAYED') gameState = 'MENU';
-            requestAnimationFrame(gameLoop);
         }
     }
 
@@ -62,17 +65,20 @@ function preloadResources() {
         background = new Background(canvas.width, canvas.height, bgImg);
         checkLoaded();
     };
+    bgImg.onerror = () => { console.error("背景圖載入失敗"); checkLoaded(); };
 
     // 載入角色圖
     charNames.forEach(char => {
         states.forEach(state => {
             const key = `${char}_${state}`;
             const img = new Image();
+            // 這裡的路徑必須與你的資料夾結構完全一致
             img.src = `assets/${char}/${key}.png`;
             img.onload = () => {
                 assets.images[key] = img;
                 checkLoaded();
             };
+            img.onerror = () => { console.error(`圖片載入失敗: ${key}`); checkLoaded(); };
         });
     });
 
@@ -84,8 +90,12 @@ function preloadResources() {
             assets.audio[file.key] = audio;
             checkLoaded();
         };
+        audio.onerror = () => { console.error(`音效載入失敗: ${file.key}`); checkLoaded(); };
         audio.load();
     });
+
+    // 啟動循環
+    requestAnimationFrame(gameLoop);
 }
 
 // --- 3. 核心遊戲循環 ---
@@ -97,7 +107,7 @@ function gameLoop(timeStamp) {
 
     switch (gameState) {
         case 'LOADING':
-            drawText("資源載入中...", 320, 220);
+            drawText("資源載入中...", 320, 220, "20px Arial", "white");
             break;
         case 'MENU':
             drawMenu();
@@ -118,58 +128,67 @@ function gameLoop(timeStamp) {
 
 // --- 4. 邏輯更新 ---
 function update(deltaTime) {
-    // 5 分鐘倒數
+    if (isNaN(deltaTime)) return;
+
     timeLeft -= deltaTime / 1000;
     if (timeLeft <= 0) {
         timeLeft = 0;
         endGame();
     }
 
-    // 更新背景與玩家 (動畫連動)
     background.update(player.speed);
     player.update(deltaTime, true);
 
-    // 隨機事件生成 (每 2.5 秒)
+    // 隨機事件生成
     spawnTimer += deltaTime;
-    if (spawnTimer > 2500) {
+    if (spawnTimer > GAME_SETTINGS.SPAWN_INTERVAL) {
         const roll = Math.random();
-        if (roll < 0.4) spawnEnemy();
-        else if (roll < 0.7) spawnToken();
+        if (roll < GAME_SETTINGS.SPAWN_CHANCE.ENEMY) {
+            enemies.push(new Enemy());
+        } else if (roll < GAME_SETTINGS.SPAWN_CHANCE.ENEMY + GAME_SETTINGS.SPAWN_CHANCE.TOKEN) {
+            tokens.push(new Token());
+        }
         spawnTimer = 0;
     }
 
-    // 處理怪物 (移動與戰鬥)
+    // 處理怪物
     enemies.forEach((enemy, i) => {
         enemy.update(deltaTime, player.speed);
         if (checkCollision(player, enemy)) {
-            assets.audio.hit.currentTime = 0;
-            assets.audio.hit.play();
+            if (assets.audio.hit) {
+                assets.audio.hit.currentTime = 0;
+                assets.audio.hit.play();
+            }
             totalTokens += 5;
             enemies.splice(i, 1);
         }
+        if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
-    // 處理代幣 (移動與拾取)
+    // 處理代幣
     tokens.forEach((token, i) => {
         token.update(deltaTime, player.speed);
         if (checkCollision(player, token)) {
-            assets.audio.coin.currentTime = 0;
-            assets.audio.coin.play();
+            if (assets.audio.coin) {
+                assets.audio.coin.currentTime = 0;
+                assets.audio.coin.play();
+            }
             totalTokens += token.value;
             tokens.splice(i, 1);
         }
+        if (token.markedForDeletion) tokens.splice(i, 1);
     });
 }
 
 // --- 5. 介面繪製 (UI) ---
 function drawMenu() {
-    drawText("請選擇今日挑戰角色", 260, 100, "28px Arial");
+    drawText("請選擇今日挑戰角色", 260, 100, "28px Arial", "white");
     const roles = ['huaijing', 'quiqui', 'lingjun'];
     roles.forEach((char, i) => {
         const x = 150 + i * 180;
         ctx.strokeStyle = "white";
         ctx.strokeRect(x, 200, 150, 150);
-        drawText(CHARACTERS[char].name, x + 10, 280, "18px Arial");
+        drawText(CHARACTERS[char].name, x + 10, 280, "18px Arial", "white");
     });
 }
 
@@ -179,7 +198,6 @@ function drawGame() {
     enemies.forEach(e => e.draw(ctx));
     tokens.forEach(t => t.draw(ctx));
 
-    // 頂部狀態欄
     ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
     ctx.fillRect(0, 0, canvas.width, 60);
     drawText(`剩餘時間: ${Math.floor(timeLeft)}s`, 20, 40, "20px Monospace", "white");
@@ -189,24 +207,24 @@ function drawGame() {
 function drawGameOver() {
     drawText("5 分鐘挑戰結束！", 280, 180, "30px Arial", "white");
     drawText(`今日總結算: ${totalTokens} 代幣`, 290, 240, "24px Arial", "gold");
-    drawText("今日已完成挑戰，請明天再來", 260, 300, "18px Arial", "gray");
+    drawText("請明日再戰", 350, 300, "18px Arial", "gray");
 }
 
 function drawAlreadyPlayed() {
     drawText("今日已挑戰過，請明日再戰！", 240, 225, "24px Arial", "red");
 }
 
-// --- 6. 互動與系統功能 ---
+// --- 6. 互動功能 ---
 function selectCharacter(type) {
     player = new Player(type, assets.images, CHARACTERS[type]);
-    assets.audio.bgm.play();
+    if (assets.audio.bgm) assets.audio.bgm.play().catch(e => console.log("音效播放被阻擋"));
     gameState = 'PLAYING';
 }
 
 function endGame() {
     gameState = 'GAMEOVER';
-    assets.audio.bgm.pause();
-    storage.saveDailyResult(totalTokens); // 標記今日已玩，存入代幣
+    if (assets.audio.bgm) assets.audio.bgm.pause();
+    storage.saveDailyResult(totalTokens); 
 }
 
 function checkCollision(a, b) {
@@ -214,13 +232,12 @@ function checkCollision(a, b) {
            a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-function drawText(text, x, y, font = "20px Arial", color = "white") {
+function drawText(text, x, y, font, color) {
     ctx.fillStyle = color;
     ctx.font = font;
     ctx.fillText(text, x, y);
 }
 
-// 監聽畫布點擊 (選擇角色)
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
@@ -230,5 +247,4 @@ canvas.addEventListener('click', (e) => {
     else if (x > 510 && x < 660) selectCharacter('lingjun');
 });
 
-// 啟動
 init();
