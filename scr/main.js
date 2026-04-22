@@ -1,3 +1,6 @@
+/**
+ * 遊戲主程式 - 負責邏輯調度與狀態管理
+ */
 import { CHARACTERS, GAME_SETTINGS } from './config.js';
 import { Player } from './entities/player.js'; 
 import { Background } from './background.js';
@@ -5,7 +8,7 @@ import { storage } from './storage.js';
 import { Enemy } from './entities/enemy.js';
 import { Token } from './entities/token.js';
 import { UI } from './ui.js';
-import { InputHandler } from './input.js'; // 引入輸入處理
+import { InputHandler } from './input.js';
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -22,7 +25,7 @@ let spawnTimer = 0;
 // --- 實體與資源 ---
 let player = null;
 let background = null;
-let input = null; // 宣告輸入處理變數
+let input = null;
 let enemies = [];
 let tokens = [];
 const assets = { images: {}, audio: {} };
@@ -44,7 +47,6 @@ function preloadResources() {
     const charNames = ['huaijing', 'quiqui', 'lingjun'];
     const states = ['stand', 'left', 'right'];
     
-    // 確保這些檔案在 assets/audio/ 下且名稱全小寫
     const audioFiles = [
         { key: 'bgm', src: 'assets/audio/bgm_main.mp3', loop: true },
         { key: 'coin', src: 'assets/audio/sfx_coin.mp3', loop: false },
@@ -68,7 +70,6 @@ function preloadResources() {
         background = new Background(canvas.width, canvas.height, bgImg);
         checkLoaded();
     };
-    bgImg.onerror = () => { console.error("背景圖載入失敗"); checkLoaded(); };
 
     // 載入角色圖
     charNames.forEach(char => {
@@ -76,24 +77,17 @@ function preloadResources() {
             const key = `${char}_${state}`;
             const img = new Image();
             img.src = `assets/${char}/${key}.png`;
-            img.onload = () => {
-                assets.images[key] = img;
-                checkLoaded();
-            };
-            img.onerror = () => { console.error(`圖片載入失敗: ${key}`); checkLoaded(); };
+            img.onload = checkLoaded;
+            assets.images[key] = img;
         });
     });
 
-    // 載入音樂音效
+    // 載入音效
     audioFiles.forEach(file => {
         const audio = new Audio(file.src);
         audio.loop = file.loop;
-        audio.oncanplaythrough = () => {
-            assets.audio[file.key] = audio;
-            checkLoaded();
-        };
-        audio.onerror = () => { console.error(`音效載入失敗: ${file.key}`); checkLoaded(); };
-        audio.load();
+        audio.oncanplaythrough = checkLoaded;
+        assets.audio[file.key] = audio;
     });
 
     requestAnimationFrame(gameLoop);
@@ -137,19 +131,18 @@ function update(deltaTime) {
         endGame();
     }
 
-    // --- 角色移動邏輯修正 ---
-    // 雖然是自動捲軸，但允許玩家在畫面內微調位置
+    // --- 角色移動控制 ---
     if (input.isRight && player.x < canvas.width - player.width) {
-        player.x += player.speed * 0.5; // 向右移動
+        player.x += player.speed * 0.5; 
     }
     if (input.isLeft && player.x > 0) {
-        player.x -= player.speed * 0.5; // 向左移動
+        player.x -= player.speed * 0.5;
     }
 
     background.update(player.speed);
     player.update(deltaTime, true);
 
-    // 隨機事件生成
+    // 生成怪物與代幣
     spawnTimer += deltaTime;
     if (spawnTimer > GAME_SETTINGS.SPAWN_INTERVAL) {
         const roll = Math.random();
@@ -161,13 +154,13 @@ function update(deltaTime) {
         spawnTimer = 0;
     }
 
-    // 處理怪物碰撞
+    // 碰撞偵測：怪物
     enemies.forEach((enemy, i) => {
         enemy.update(deltaTime, player.speed);
         if (player.checkCollision(enemy)) {
             if (assets.audio.hit) {
                 assets.audio.hit.currentTime = 0;
-                assets.audio.hit.play();
+                assets.audio.hit.play().catch(() => {});
             }
             player.hp -= enemy.damage;
             enemies.splice(i, 1);
@@ -176,13 +169,13 @@ function update(deltaTime) {
         if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
-    // 處理代幣碰撞
+    // 碰撞偵測：代幣
     tokens.forEach((token, i) => {
         token.update(deltaTime, player.speed);
         if (player.checkCollision(token)) {
             if (assets.audio.coin) {
                 assets.audio.coin.currentTime = 0;
-                assets.audio.coin.play();
+                assets.audio.coin.play().catch(() => {});
             }
             totalTokens += token.value;
             tokens.splice(i, 1);
@@ -200,7 +193,7 @@ function drawGame() {
     enemies.forEach(e => e.draw(ctx));
     tokens.forEach(t => t.draw(ctx));
 
-    // 使用 UI.js 繪製抬頭顯示器
+    // 使用 UI 繪製 HUD
     UI.drawHUD(ctx, canvas.width, canvas.height, {
         timeLeft: Math.floor(timeLeft),
         tokens: totalTokens,
@@ -208,12 +201,12 @@ function drawGame() {
     });
 }
 
-// --- 6. 互動功能 ---
+// --- 6. 核心功能 ---
 function selectCharacter(type) {
     player = new Player(type, assets.images, CHARACTERS[type]);
     if (assets.audio.bgm) {
         assets.audio.bgm.currentTime = 0;
-        assets.audio.bgm.play().catch(e => console.log("音效自動播放受限"));
+        assets.audio.bgm.play().catch(e => console.log("音效播放受限，需玩家互動"));
     }
     gameState = 'PLAYING';
 }
@@ -224,18 +217,19 @@ function endGame() {
     storage.saveDailyResult(totalTokens); 
 }
 
-// 事件監聽：選單點擊角色
+// --- 7. 事件監聽 ---
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
+    
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    // 判定區域需對應 ui.js 畫出來的三個框
-    if (y > 180 && y < 380) {
-        if (x > 120 && x < 280) selectCharacter('huaijing');
-        else if (x > 320 && x < 480) selectCharacter('quiqui');
-        else if (x > 520 && x < 680) selectCharacter('lingjun');
+    // 精確匹配 UI.js 繪製的角色選擇區域 (y: 180 ~ 380)
+    if (y >= 180 && y <= 380) {
+        if (x >= 120 && x <= 280) selectCharacter('huaijing');
+        else if (x >= 320 && x <= 480) selectCharacter('quiqui');
+        else if (x >= 520 && x <= 680) selectCharacter('lingjun');
     }
 });
 
