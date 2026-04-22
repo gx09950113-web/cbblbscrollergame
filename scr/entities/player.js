@@ -1,16 +1,16 @@
 import { Entity } from './entity.js';
+import { GAME_SETTINGS } from '../config.js';
 
 /**
- * 玩家類別 - 處理動畫切換、角色屬性與攻擊邏輯
+ * 玩家類別 - 處理動畫、跳躍物理與攻擊判定
  */
 export class Player extends Entity {
     constructor(type, assets, config) {
-        // 初始化位置
-        super(100, 316, config.width, config.height); 
+        // 初始化站在地平線上
+        super(100, GAME_SETTINGS.GROUND_Y - config.height, config.width, config.height); 
         
         this.type = type;
         this.config = config;
-        
         this.hp = config.hp;
         this.maxHp = config.hp;
         this.speed = config.speed;
@@ -23,85 +23,90 @@ export class Player extends Entity {
         };
         this.currentImage = this.images.stand;
 
+        // 跳躍與重力屬性
+        this.vy = 0;
+        this.gravity = GAME_SETTINGS.GRAVITY || 0.8;
+        this.jumpPower = -15; 
+        this.onGround = true;
+
         this.animSteps = ['stand', 'left', 'stand', 'right'];
         this.animIndex = 0;
         this.frameTimer = 0;
         this.frameInterval = config.frameInterval;
-
-        this.healTimer = 0;
-        this.attackCooldown = 0; // 攻擊冷卻計時
+        this.attackCooldown = 0;
     }
 
     /**
-     * 執行攻擊邏輯
-     * @param {Array} enemies - 當前畫面上的敵人列表
+     * 執行跳躍動作
+     */
+    jump() {
+        if (this.onGround) {
+            this.vy = this.jumpPower;
+            this.onGround = false;
+        }
+    }
+
+    /**
+     * 執行攻擊動作
      */
     performAttack(enemies) {
-        if (this.attackCooldown > 0) return null; // 冷卻中
+        if (this.attackCooldown > 0) return null;
 
         let hitEnemy = null;
         enemies.forEach(enemy => {
-            // 設定攻擊範圍：角色中心點前方約 60 像素
-            const attackRange = 60;
+            const attackRange = 70; // 攻擊距離
             const distance = enemy.x - (this.x + this.width);
             
-            // 判定：敵人在前方且距離在範圍內
-            if (distance >= -10 && distance <= attackRange) {
+            // 判定敵人是否在角色前方且在距離內
+            if (distance >= -20 && distance <= attackRange) {
                 enemy.hp -= this.attack;
                 hitEnemy = enemy;
                 if (enemy.hp <= 0) enemy.markedForDeletion = true;
             }
         });
 
-        this.attackCooldown = 500; // 設定 0.5 秒攻擊間隔
+        this.attackCooldown = 400; // 0.4 秒攻擊間隔
         return hitEnemy;
     }
 
     update(deltaTime, isMoving) {
-        // 1. 處理動畫：只有移動時才循環動畫，否則回歸 stand
+        // 1. 動畫處理：移動時循環，靜止時 stand
         if (isMoving) {
             this.frameTimer += deltaTime;
             if (this.frameTimer >= this.frameInterval) {
                 this.animIndex = (this.animIndex + 1) % this.animSteps.length;
-                const currentState = this.animSteps[this.animIndex];
-                this.currentImage = this.images[currentState];
+                this.currentImage = this.images[this.animSteps[this.animIndex]];
                 this.frameTimer = 0;
             }
         } else {
             this.currentImage = this.images.stand;
         }
 
-        // 2. 處理攻擊冷卻
-        if (this.attackCooldown > 0) {
-            this.attackCooldown -= deltaTime;
+        // 2. 物理處理 (跳躍與重力)
+        this.y += this.vy;
+        if (!this.onGround) {
+            this.vy += this.gravity;
+        }
+        
+        // 地面碰撞檢測
+        const groundY = GAME_SETTINGS.GROUND_Y - this.height;
+        if (this.y >= groundY) {
+            this.y = groundY;
+            this.vy = 0;
+            this.onGround = true;
         }
 
-        // 3. 處理角色特殊被動 (奶媽回血)
-        if (this.config.healPerSecond && this.hp < this.maxHp) {
-            this.healTimer += deltaTime;
-            if (this.healTimer >= 1000) {
-                this.hp = Math.min(this.maxHp, this.hp + this.config.healPerSecond);
-                this.healTimer = 0;
-            }
-        }
-
+        if (this.attackCooldown > 0) this.attackCooldown -= deltaTime;
         if (this.hp < 0) this.hp = 0;
     }
 
     draw(ctx) {
         if (this.currentImage) {
             ctx.drawImage(this.currentImage, this.x, this.y, this.width, this.height);
-            
-            // 顯示名字與攻擊冷卻提示
             ctx.fillStyle = "white";
             ctx.font = "14px Arial";
             ctx.textAlign = "center";
             ctx.fillText(this.config.name, this.x + this.width / 2, this.y - 10);
-
-            if (this.attackCooldown > 0) {
-                ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-                ctx.fillRect(this.x, this.y + this.height + 5, (this.attackCooldown / 500) * this.width, 3);
-            }
         }
     }
 }
