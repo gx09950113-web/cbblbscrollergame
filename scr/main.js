@@ -72,6 +72,11 @@ function preloadResources() {
     audioFiles.forEach(file => {
         const audio = new Audio(file.src);
         audio.loop = file.loop;
+        
+        // --- 設定音量 ---
+        if (file.key === 'bgm') audio.volume = 0.3; // 調小背景音樂
+        else audio.volume = 0.6; // 其他音效音量
+        
         audio.oncanplaythrough = checkLoaded;
         assets.audio[file.key] = audio;
     });
@@ -113,20 +118,15 @@ function update(deltaTime) {
 
     if (input.isJump) player.jump();
 
-    // --- 攻擊與擊殺掉落邏輯 ---
     if (gameState === 'PLAYING' && input.isAttack) {
         const killedEnemy = player.performAttack(enemies);
-        
-        // 閃光特效已在 player.draw 處理
         if (killedEnemy) {
-            // 擊殺音效
             if (assets.audio.hit) {
                 assets.audio.hit.currentTime = 0;
                 assets.audio.hit.play().catch(()=>{});
             }
-            // 重要：擊殺怪物後在怪物死掉的位置生成一個代幣
             const dropToken = new Token();
-            dropToken.x = killedEnemy.x; // 繼承怪物座標
+            dropToken.x = killedEnemy.x;
             dropToken.y = killedEnemy.y;
             tokens.push(dropToken);
         }
@@ -136,7 +136,6 @@ function update(deltaTime) {
 
     const relativeSpeed = (isMoving && input.isRight) ? player.speed : 0;
 
-    // 怪物更新與碰撞
     enemies.forEach((enemy, i) => {
         enemy.update(deltaTime, relativeSpeed);
         if (player.checkCollision(enemy)) {
@@ -147,7 +146,6 @@ function update(deltaTime) {
         if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
-    // 代幣更新與吃掉邏輯
     tokens.forEach((token, i) => {
         token.update(deltaTime, relativeSpeed);
         if (player.checkCollision(token)) {
@@ -189,8 +187,11 @@ function endGame() {
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
     if (y >= 180 && y <= 380) {
         if (x >= 120 && x <= 280) selectCharacter('huaijing');
         else if (x >= 320 && x <= 480) selectCharacter('quiqui');
