@@ -11,8 +11,10 @@ body {
     justify-content: center;
     align-items: center;
     height: 100vh;
+    width: 100vw;
     overflow: hidden; /* 防止出現捲軸 */
     font-family: "Microsoft JhengHei", Arial, sans-serif;
+    touch-action: none; /* 重要：禁用瀏覽器預設手勢，防止行動端縮放與滾動干擾遊戲 */
 }
 
 #game-container {
@@ -21,26 +23,54 @@ body {
     border: 4px solid #333;
     border-radius: 8px;
     background-color: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 canvas {
     display: block;
-    image-rendering: pixelated; /* 如果你是用像素圖，這行能保持圖片清晰不模糊 */
-    max-width: 100vw;
-    max-height: 100vh;
+    image-rendering: pixelated; /* 保持像素圖清晰不模糊 */
+    
+    /* 響應式尺寸設定 */
+    width: 100%;
+    height: auto;
+    max-width: 800px; /* 對應畫布邏輯寬度 */
+    max-height: 450px; /* 對應畫布邏輯高度 */
+}
+
+/* 針對行動端（手機/平板）的響應式調整 */
+@media (max-width: 850px) or (orientation: portrait) {
+    #game-container {
+        border: none;
+        border-radius: 0;
+        width: 100vw;
+    }
+    
+    canvas {
+        width: 100vw;
+        height: auto;
+        max-width: none;
+        max-height: 100vh;
+    }
+
+    #controls-hint {
+        display: none; /* 行動端隱藏鍵盤提示 */
+    }
 }
 
 #controls-hint {
     position: absolute;
-    bottom: -60px;
+    bottom: -70px;
     width: 100%;
     text-align: center;
     color: #888;
     font-size: 14px;
     line-height: 1.6;
+    pointer-events: none;
 }
 
-/* 簡單的按鈕懸停效果 (給選單用) */
+/* 簡單的按鈕懸停效果 */
 canvas:active {
     cursor: crosshair;
 }
