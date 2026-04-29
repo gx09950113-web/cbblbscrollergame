@@ -29,7 +29,7 @@ const assets = { images: {}, audio: {} };
 
 function init() {
     storage.checkAndResetDaily(); 
-    input = new InputHandler(); 
+    input = new InputHandler(canvas); 
     if (!storage.canPlayToday()) gameState = 'ALREADY_PLAYED';
     preloadResources();
 }
@@ -72,11 +72,7 @@ function preloadResources() {
     audioFiles.forEach(file => {
         const audio = new Audio(file.src);
         audio.loop = file.loop;
-        
-        // --- 設定音量 ---
-        if (file.key === 'bgm') audio.volume = 0.3; // 調小背景音樂
-        else audio.volume = 0.6; // 其他音效音量
-        
+        audio.volume = (file.key === 'bgm') ? 0.3 : 0.6; // 背景音量調小
         audio.oncanplaythrough = checkLoaded;
         assets.audio[file.key] = audio;
     });
@@ -106,16 +102,18 @@ function update(deltaTime) {
     if (timeLeft <= 0) endGame();
 
     let isMoving = false;
+    let moveSpeed = 0;
+
     if (input.isRight && player.x < canvas.width - player.width) {
-        player.x += player.speed * 0.5; 
-        background.update(player.speed); 
+        moveSpeed = player.speed;
+        background.update(moveSpeed * 0.5); 
         isMoving = true;
-    }
-    if (input.isLeft && player.x > 0) {
-        player.x -= player.speed * 0.5;
+    } else if (input.isLeft && player.x > 0) {
+        moveSpeed = -player.speed;
         isMoving = true;
     }
 
+    player.x += moveSpeed * 0.5;
     if (input.isJump) player.jump();
 
     if (gameState === 'PLAYING' && input.isAttack) {
@@ -134,26 +132,23 @@ function update(deltaTime) {
 
     player.update(deltaTime, isMoving);
 
-    const relativeSpeed = (isMoving && input.isRight) ? player.speed : 0;
-
-    enemies.forEach((enemy, i) => {
-        enemy.update(deltaTime, relativeSpeed);
+    const scrollSpeed = (isMoving && input.isRight) ? player.speed : 0;
+    enemies.forEach(enemy => {
+        enemy.update(deltaTime, scrollSpeed);
         if (player.checkCollision(enemy)) {
             player.hp -= enemy.damage;
-            enemies.splice(i, 1);
+            enemies.splice(enemies.indexOf(enemy), 1);
             if (player.hp <= 0) endGame();
         }
-        if (enemy.markedForDeletion) enemies.splice(i, 1);
     });
 
-    tokens.forEach((token, i) => {
-        token.update(deltaTime, relativeSpeed);
+    tokens.forEach(token => {
+        token.update(deltaTime, scrollSpeed);
         if (player.checkCollision(token)) {
             if (assets.audio.coin) { assets.audio.coin.currentTime = 0; assets.audio.coin.play().catch(()=>{}); }
             totalTokens += token.value;
-            tokens.splice(i, 1);
+            tokens.splice(tokens.indexOf(token), 1);
         }
-        if (token.markedForDeletion) tokens.splice(i, 1);
     });
 
     spawnTimer += deltaTime;
@@ -170,6 +165,7 @@ function drawGame() {
     enemies.forEach(e => e.draw(ctx));
     tokens.forEach(t => t.draw(ctx));
     UI.drawHUD(ctx, canvas.width, canvas.height, { timeLeft, tokens: totalTokens, player });
+    UI.drawMobileControls(ctx, input.isTouchDevice); // 繪製虛擬按鈕
 }
 
 function selectCharacter(type) {
@@ -187,11 +183,8 @@ function endGame() {
 canvas.addEventListener('click', (e) => {
     if (gameState !== 'MENU') return;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
+    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
     if (y >= 180 && y <= 380) {
         if (x >= 120 && x <= 280) selectCharacter('huaijing');
         else if (x >= 320 && x <= 480) selectCharacter('quiqui');
