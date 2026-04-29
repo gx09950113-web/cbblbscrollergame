@@ -40,28 +40,35 @@ export class Player extends Entity {
         }
     }
 
+    /**
+     * 執行攻擊並回傳被擊殺的怪物對象
+     */
     performAttack(enemies) {
         if (this.attackCooldown > 0) return null;
-        this.flashTimer = 100;
+        this.flashTimer = 100; // 觸發閃光
 
         let killedEnemy = null;
         enemies.forEach(enemy => {
             const attackRange = 80;
             const distance = enemy.x - (this.x + this.width);
+            
+            // 判定距離
             if (distance >= -20 && distance <= attackRange) {
                 enemy.hp -= this.attack;
                 if (enemy.hp <= 0) {
-                    enemy.markedForDeletion = true;
+                    enemy.hp = 0;
+                    enemy.markedForDeletion = true; // 關鍵：標記刪除，防止繼續碰撞
                     killedEnemy = enemy;
                 }
             }
         });
 
-        this.attackCooldown = 400;
-        return killedEnemy;
+        this.attackCooldown = 400; // 攻擊冷卻 0.4秒
+        return killedEnemy; 
     }
 
     update(deltaTime, isMoving) {
+        // 動畫處理
         if (isMoving) {
             this.frameTimer += deltaTime;
             if (this.frameTimer >= this.frameInterval) {
@@ -73,6 +80,7 @@ export class Player extends Entity {
             this.currentImage = this.images.stand;
         }
 
+        // 跳躍與重力處理
         this.y += this.vy;
         if (!this.onGround) this.vy += this.gravity;
         
@@ -100,7 +108,9 @@ export class Player extends Entity {
             }
             ctx.drawImage(this.currentImage, this.x, this.y, this.width, this.height);
             ctx.restore();
+
             ctx.fillStyle = "white";
+            ctx.font = "14px Arial";
             ctx.textAlign = "center";
             ctx.fillText(this.config.name, this.x + this.width / 2, this.y - 10);
         }
